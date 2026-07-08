@@ -155,6 +155,7 @@ export class Game {
     this.clock = MATCH_SECONDS;
     this.power = 0.4;
     this.defenseCharge = 0.35;
+    this.flow = 0;
     this.possession = 'player';
     this.target = { x: W / 2, y: FIELD.y + FIELD.h / 2 };
     this.resetPlayers();
@@ -275,7 +276,7 @@ export class Game {
       return;
     }
     if (this.action === 'pass') {
-      const mate = this.closestTeammate(target, owner);
+      const mate = this.mostOpenTeammate(owner);
       this.passTo(mate);
       return;
     }
@@ -350,6 +351,29 @@ export class Game {
     return mates.reduce((best, p) => dist(p, target) < dist(best, target) ? p : best, mates[0]);
   }
 
+  mostOpenTeammate(owner) {
+    const mates = this.players.filter(p => p.side === owner.side && p !== owner && p.role !== 'GK');
+    return mates.reduce((best, p) => this.openPassScore(owner, p) > this.openPassScore(owner, best) ? p : best, mates[0]);
+  }
+
+  openPassScore(owner, mate) {
+    const opponents = this.players.filter(p => p.side !== owner.side);
+    const nearestOpponent = opponents.reduce((nearest, p) => Math.min(nearest, dist(p, mate)), 999);
+    const lanePressure = opponents.reduce((pressure, p) => pressure + Math.max(0, 28 - this.distanceToSegment(p, owner, mate)), 0);
+    const forward = owner.side === 'player' ? owner.y - mate.y : mate.y - owner.y;
+    const passDistance = dist(owner, mate);
+    const roleBonus = mate.role === 'F' ? 18 : mate.role === 'M' ? 10 : 2;
+    return nearestOpponent * 1.8 + clamp(forward, -30, 90) + roleBonus - lanePressure * 2.4 - Math.abs(passDistance - 115) * 0.35;
+  }
+
+  distanceToSegment(point, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy || 1;
+    const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq, 0, 1);
+    return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
+  }
+
   shoot(owner, target, side) {
     const goalY = side === 'player' ? FIELD.y - 8 : FIELD.y + FIELD.h + 8;
     const goalX = clamp(target.x, W / 2 - GOAL_W / 2 + 8, W / 2 + GOAL_W / 2 - 8);
@@ -366,6 +390,7 @@ export class Game {
     this.clock -= dt;
     this.power = 0.35 + Math.abs(Math.sin(Date.now() / 700)) * 0.65;
     this.defenseCharge = Math.max(0.28, this.defenseCharge - dt * 0.9);
+    this.updateFieldFlow(dt);
     if (this.clock <= 0) {
       this.endPeriod();
       return;
@@ -402,11 +427,16 @@ export class Game {
       const goalDistance = FIELD.y + FIELD.h - owner.y;
       if (goalDistance < 105 && Math.random() < dt * 0.22) this.shoot(owner, { x: W / 2 + rand(-54, 54), y: FIELD.y + FIELD.h + 10 }, 'cpu');
       else if (Math.random() < dt * 0.25) {
-        const mate = this.closestTeammate({ x: W / 2 + rand(-90, 90), y: owner.y + rand(25, 80) }, owner);
+        const mate = this.mostOpenTeammate(owner);
         this.ball.kickToward(mate, 190);
         playPass();
       }
     }
+  }
+
+  updateFieldFlow(dt) {
+    const target = this.possession === 'player' ? 1 : -1;
+    this.flow += (target - this.flow) * Math.min(1, dt * 0.75);
   }
 
   getPressers(side, target, count) {
@@ -417,22 +447,32 @@ export class Game {
   }
 
   carrierTarget(player) {
-    const goalY = player.side === 'player' ? FIELD.y + 64 : FIELD.y + FIELD.h - 96;
-    if (player.side === 'player') return player.target;
-    return {
+    const attackDir = player.side === 'player' ? -1 : 1;
+    const autoAdvance = {
       x: clamp(player.x + Math.sin(Date.now() / 1100 + player.index) * 18, FIELD.x + 46, FIELD.x + FIELD.w - 46),
-      y: goalY,
+      y: clamp(player.y + attackDir * 58, FIELD.y + 56, FIELD.y + FIELD.h - 56),
+    };
+    if (player.side === 'player') {
+      const dx = player.target.x - player.x;
+      const dy = player.target.y - player.y;
+      return Math.hypot(dx, dy) > 24 ? player.target : autoAdvance;
+    }
+    return {
+      x: autoAdvance.x,
+      y: autoAdvance.y,
     };
   }
 
   supportTarget(player, owner) {
     const dir = player.side === 'player' ? -1 : 1;
     const lane = player.home.x < W / 2 ? -1 : player.home.x > W / 2 ? 1 : 0;
-    const baseX = owner ? owner.x + lane * 78 : player.home.x;
-    const roleLead = player.role === 'F' ? 84 : player.role === 'M' ? 46 : -26;
+    const phasePush = (player.side === 'player' ? -this.flow : this.flow) * 58;
+    const wave = Math.sin(Date.now() / 1300 + player.index * 1.7) * 20;
+    const baseX = owner ? owner.x + lane * 86 + wave : player.home.x + lane * 26;
+    const roleLead = player.role === 'F' ? 108 : player.role === 'M' ? 64 : -18;
     return {
       x: clamp(baseX, FIELD.x + 34, FIELD.x + FIELD.w - 34),
-      y: clamp((owner?.y ?? player.home.y) + dir * roleLead, FIELD.y + 42, FIELD.y + FIELD.h - 42),
+      y: clamp((owner?.y ?? player.home.y) + dir * roleLead + phasePush, FIELD.y + 42, FIELD.y + FIELD.h - 42),
     };
   }
 
@@ -446,12 +486,13 @@ export class Game {
 
   shapeTarget(player, target) {
     const sideGoalY = player.side === 'player' ? FIELD.y + FIELD.h : FIELD.y;
-    const towardBall = clamp((target.y - player.home.y) * 0.22, -42, 42);
+    const flowShift = (player.side === 'player' ? -this.flow : this.flow) * 48;
+    const towardBall = clamp((target.y - player.home.y) * 0.18, -34, 34);
     const laneNudge = clamp((target.x - W / 2) * 0.16, -22, 22);
     const protectGoal = player.role === 'D' ? (player.side === 'player' ? -18 : 18) : 0;
     return {
       x: clamp(player.home.x + laneNudge, FIELD.x + 28, FIELD.x + FIELD.w - 28),
-      y: clamp(player.home.y + towardBall + protectGoal, Math.min(FIELD.y + 38, sideGoalY), FIELD.y + FIELD.h - 38),
+      y: clamp(player.home.y + towardBall + protectGoal + flowShift, Math.min(FIELD.y + 38, sideGoalY), FIELD.y + FIELD.h - 38),
     };
   }
 
