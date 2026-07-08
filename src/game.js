@@ -162,6 +162,7 @@ export class Game {
     this.defenseCharge = 0.35;
     this.flow = 0;
     this.possession = 'player';
+    this.playerPossessionTimer = 0;
     this.target = null;
     this.resetPlayers();
   }
@@ -176,6 +177,7 @@ export class Game {
     this.ball.x = this.controlled.x;
     this.ball.y = this.controlled.y;
     this.possession = starter;
+    this.playerPossessionTimer = starter === 'player' ? 0 : -1;
     this.action = starter === 'player' ? OFFENSE_ACTIONS[0].id : DEFENSE_ACTIONS[0].id;
     this.target = null;
     this.hint = starter === 'player' ? 'Tap PASS or SHOOT!' : 'Tap TACKLE or SLIDE!';
@@ -375,7 +377,7 @@ export class Game {
     const kidFriendly = side === 'player';
     const kick = owner.player.kick + rand(kidFriendly ? -0.5 : -3, kidFriendly ? 2.5 : 1);
     const accuracy = clamp((owner.player.control + kick) / (kidFriendly ? 17 : 24), 0.35, 0.96);
-    const miss = (1 - accuracy) * rand(kidFriendly ? -48 : -120, kidFriendly ? 48 : 120);
+    const miss = (1 - accuracy) * rand(kidFriendly ? -34 : -120, kidFriendly ? 34 : 120);
     this.ball.kickToward({ x: goalX + miss, y: goalY }, kidFriendly ? 315 + kick * 10 : 255 + kick * 8);
     if (side === 'player') this.target = null;
     this.hint = side === 'player' ? 'Go in! Go in!' : 'They shoot!';
@@ -387,6 +389,11 @@ export class Game {
     this.power = 0.35 + Math.abs(Math.sin(Date.now() / 700)) * 0.65;
     this.defenseCharge = Math.max(0.28, this.defenseCharge - dt * 0.9);
     this.updateFieldFlow(dt);
+    if (this.possession === 'player') {
+      this.playerPossessionTimer += dt;
+    } else {
+      this.playerPossessionTimer = 0;
+    }
     if (this.clock <= 0) {
       this.endPeriod();
       return;
@@ -523,9 +530,13 @@ export class Game {
         // Goalkeepers are protected from auto-tackles — use manual TACKLE button
         if (carrier.role === 'GK') continue;
         if (dist(defender, carrier) < 22) {
-          const chance = defender.side === 'player'
+          const POSSESSION_BUFFER = 1.8;
+          const bufferFactor = defender.side === 'cpu' && this.playerPossessionTimer < POSSESSION_BUFFER
+            ? Math.pow(this.playerPossessionTimer / POSSESSION_BUFFER, 1.5)
+            : 1;
+          const chance = (defender.side === 'player'
             ? 0.28 + defender.player.control * 0.035 - carrier.player.control * 0.012
-            : 0.07 + defender.player.control * 0.018 - carrier.player.control * 0.025;
+            : 0.07 + defender.player.control * 0.018 - carrier.player.control * 0.025) * bufferFactor;
           if (Math.random() < chance) {
             this.ball.owner = defender;
             this.possession = defender.side;
@@ -566,8 +577,8 @@ export class Game {
     const inMouth = this.ball.x > W / 2 - GOAL_W / 2 && this.ball.x < W / 2 + GOAL_W / 2;
     const scoringSide = topGoal ? 'player' : 'cpu';
     const keeper = this.players.find(p => p.side !== scoringSide && p.role === 'GK');
-    const baseSave = keeper?.side === 'cpu' ? 0.32 : 0.78;
-    const saveChance = keeper ? clamp(baseSave - Math.abs(this.ball.x - keeper.x) / 150, keeper.side === 'cpu' ? 0.08 : 0.38, keeper.side === 'cpu' ? 0.42 : 0.86) : 0.2;
+    const baseSave = keeper?.side === 'cpu' ? 0.18 : 0.78;
+    const saveChance = keeper ? clamp(baseSave - Math.abs(this.ball.x - keeper.x) / 150, keeper.side === 'cpu' ? 0.04 : 0.38, keeper.side === 'cpu' ? 0.26 : 0.86) : 0.2;
     if (!inMouth || Math.random() < saveChance) {
       this.ball.vx = 0;
       this.ball.vy = topGoal ? 145 : -145;
