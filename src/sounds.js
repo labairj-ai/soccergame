@@ -1,4 +1,6 @@
 let actx = null;
+let musicTimer = null;
+let musicIdx = 0;
 
 function ac() {
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -29,3 +31,29 @@ export function playTackle() { tone(105, 0.16, 'sawtooth', 0.12, 180); }
 export function playSave() { tone(220, 0.12, 'square', 0.14); setTimeout(() => tone(160, 0.18, 'sine', 0.1), 80); }
 export function playGoal() { [392, 494, 587, 784, 988].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'square', 0.19), i * 75)); }
 export function playWhistle() { tone(1320, 0.12, 'sine', 0.13); setTimeout(() => tone(1320, 0.18, 'sine', 0.12), 170); }
+
+const MUSIC = [
+  [392, 0.18], [494, 0.18], [587, 0.18], [494, 0.18],
+  [659, 0.24], [587, 0.18], [494, 0.18], [392, 0.24],
+  [523, 0.18], [659, 0.18], [784, 0.24], [659, 0.18],
+  [587, 0.18], [494, 0.18], [440, 0.18], [392, 0.3],
+];
+
+export function startMusic() {
+  try {
+    ac();
+    if (musicTimer) return;
+    musicTimer = setInterval(() => {
+      const [note, dur] = MUSIC[musicIdx % MUSIC.length];
+      tone(note, dur, musicIdx % 4 === 0 ? 'square' : 'triangle', 0.035);
+      if (musicIdx % 2 === 0) tone(note / 2, dur * 1.4, 'sine', 0.025);
+      musicIdx += 1;
+    }, 185);
+  } catch {}
+}
+
+export function stopMusic() {
+  if (!musicTimer) return;
+  clearInterval(musicTimer);
+  musicTimer = null;
+}

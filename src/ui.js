@@ -31,6 +31,9 @@ export function drawScoreboard(ctx, gs) {
   ctx.font = '10px monospace';
   ctx.fillStyle = 'rgba(255,255,255,0.72)';
   ctx.fillText(gs.possession === 'player' ? 'YOUR BALL' : 'DEFEND', W - 12, 48);
+  ctx.font = '8px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.58)';
+  ctx.fillText(`UPDATED ${gs.buildLabel}`, W - 12, 64);
 }
 
 export function drawControls(ctx, gs) {

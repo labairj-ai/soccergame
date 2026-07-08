@@ -2,6 +2,28 @@ import './style.css';
 import { Game } from './game.js';
 import { W, H } from './constants.js';
 
+const BUILD_STAMP = typeof __BUILD_TIME__ === 'undefined' ? String(Date.now()) : __BUILD_TIME__;
+const BUILD_KEY = `park-soccer-${BUILD_STAMP}`;
+
+async function clearBrowserCacheForBuild() {
+  try {
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    }
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister()));
+    }
+    sessionStorage.setItem('park-soccer-build', BUILD_KEY);
+  } catch {}
+}
+
+clearBrowserCacheForBuild();
+
+const favicon = document.querySelector('link[rel="icon"]');
+if (favicon) favicon.href = `./favicon.svg?v=${encodeURIComponent(BUILD_STAMP)}`;
+
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 

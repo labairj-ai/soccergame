@@ -4,11 +4,27 @@ import {
 import { drawField } from './field.js';
 import { createRandomTeams, drawPlayer } from './characters.js';
 import { drawScoreboard, drawControls, drawMessage } from './ui.js';
-import { playGoal, playKick, playPass, playSave, playTackle, playWhistle } from './sounds.js';
+import { playGoal, playKick, playPass, playSave, playTackle, playWhistle, startMusic, stopMusic } from './sounds.js';
 
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const BUILD_STAMP = typeof __BUILD_TIME__ === 'undefined' ? new Date().toISOString() : __BUILD_TIME__;
+
+function buildLabel() {
+  try {
+    return new Date(BUILD_STAMP).toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return 'NOW';
+  }
+}
 
 function moveToward(entity, target, speed, dt) {
   const dx = target.x - entity.x;
@@ -127,6 +143,7 @@ export class Game {
     this.playerTeam = this.teams.playerTeam;
     this.cpuTeam = this.teams.cpuTeam;
     this.state = S.MENU;
+    this.buildLabel = buildLabel();
     this.ball = new Ball();
     this.action = OFFENSE_ACTIONS[0].id;
     this.hint = 'Tap a button, then tap the field.';
@@ -155,6 +172,7 @@ export class Game {
   }
 
   pointerDown(pos) {
+    if (this.state !== S.GAME_OVER) startMusic();
     if (pos.y >= 560) {
       if (this.state !== S.PLAYING) {
         this.startOrContinue();
@@ -188,6 +206,7 @@ export class Game {
     if (this.state === S.MENU) {
       this.state = S.PLAYING;
       this.message = null;
+      startMusic();
       playWhistle();
       return;
     }
@@ -214,6 +233,7 @@ export class Game {
       this.state = S.PLAYING;
       this.message = null;
       this.resetPlayers('player');
+      startMusic();
       playWhistle();
     }
   }
@@ -458,6 +478,7 @@ export class Game {
       return;
     }
     this.state = S.GAME_OVER;
+    stopMusic();
     const result = this.score.player > this.score.cpu ? 'YOU WIN' : this.score.player < this.score.cpu ? 'FULL TIME' : 'DRAW';
     this.message = { title: result, sub: `${this.score.player} - ${this.score.cpu}` };
   }
