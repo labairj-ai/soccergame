@@ -493,12 +493,23 @@ export class Game {
     };
   }
 
-  // Zone defense: each player tracks the ball only within their horizontal zone
+  // Zone defense: hold shape when carrier is outside the zone; close in when they enter it
   zoneTarget(player, target) {
-    const sideGoalY = player.side === 'player' ? FIELD.y + FIELD.h : FIELD.y;
     const flowShift = (player.side === 'player' ? -this.flow : this.flow) * 48;
-    // Clamp the ball's x to this player's zone radius before computing x offset
     const zoneRadius = FIELD.w * 0.24;
+    const inXZone = Math.abs(target.x - player.home.x) < zoneRadius;
+    const inYRange = Math.abs(target.y - player.home.y) < FIELD.h * 0.45;
+
+    if (inXZone && inYRange) {
+      // Carrier is in the zone — step goal-side to pressure them directly
+      const goalSideOffset = player.side === 'player' ? 14 : -14;
+      return {
+        x: clamp(target.x, FIELD.x + 28, FIELD.x + FIELD.w - 28),
+        y: clamp(target.y + goalSideOffset, FIELD.y + 38, FIELD.y + FIELD.h - 38),
+      };
+    }
+
+    // Outside zone — hold shape with light ball tracking
     const ballInZone = clamp(target.x, player.home.x - zoneRadius, player.home.x + zoneRadius);
     const xTracking = (ballInZone - player.home.x) * 0.45;
     const towardBall = clamp((target.y - player.home.y) * 0.25, -46, 46);
