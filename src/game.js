@@ -105,11 +105,12 @@ class Ball {
 }
 
 class GamePlayer {
-  constructor(side, team, player, home) {
+  constructor(side, team, player, home, index) {
     this.side = side;
     this.team = team;
     this.player = player;
     this.role = home.role;
+    this.index = index;
     this.home = { x: home.x, y: home.y };
     this.x = home.x;
     this.y = home.y;
@@ -161,8 +162,8 @@ export class Game {
 
   resetPlayers(starter = 'player') {
     this.players = [
-      ...PLAYER_FORMATION.map((home, i) => new GamePlayer('player', this.playerTeam, this.playerTeam.players[i], home)),
-      ...CPU_FORMATION.map((home, i) => new GamePlayer('cpu', this.cpuTeam, this.cpuTeam.players[i], home)),
+      ...PLAYER_FORMATION.map((home, i) => new GamePlayer('player', this.playerTeam, this.playerTeam.players[i], home, i)),
+      ...CPU_FORMATION.map((home, i) => new GamePlayer('cpu', this.cpuTeam, this.cpuTeam.players[i], home, i)),
     ];
     this.controlled = this.players.find(p => p.side === starter && p.role === 'M') ?? this.players[3];
     this.ball.owner = this.controlled;
@@ -380,15 +381,19 @@ export class Game {
   updateAI(dt) {
     const owner = this.ball.owner;
     const attacking = owner?.side ?? this.possession;
+    const defending = attacking === 'player' ? 'cpu' : 'player';
+    const pressers = this.getPressers(defending, owner ?? this.ball, owner ? 1 : 2);
     for (const p of this.players) {
       if (p.role === 'GK') {
         p.target = { x: clamp(this.ball.x, 140, 250), y: p.side === 'player' ? FIELD.y + FIELD.h - 36 : FIELD.y + 36 };
+      } else if (owner === p) {
+        p.target = this.carrierTarget(p);
       } else if (p.side === attacking) {
-        const dir = p.side === 'player' ? -1 : 1;
-        const supportDistance = p.side === 'player' ? 32 : 22;
-        p.target = { x: p.home.x + Math.sin(Date.now() / 900 + p.x) * 16, y: p.home.y + dir * supportDistance };
+        p.target = this.supportTarget(p, owner);
+      } else if (pressers.includes(p)) {
+        p.target = this.pressTarget(p, owner ?? this.ball);
       } else {
-        p.target = { x: this.ball.x + rand(-24, 24), y: this.ball.y + rand(-18, 18) };
+        p.target = this.shapeTarget(p, owner ?? this.ball);
       }
     }
 
@@ -402,6 +407,52 @@ export class Game {
         playPass();
       }
     }
+  }
+
+  getPressers(side, target, count) {
+    return this.players
+      .filter(p => p.side === side && p.role !== 'GK' && p.cooldown <= 0)
+      .sort((a, b) => dist(a, target) - dist(b, target))
+      .slice(0, count);
+  }
+
+  carrierTarget(player) {
+    const goalY = player.side === 'player' ? FIELD.y + 64 : FIELD.y + FIELD.h - 96;
+    if (player.side === 'player') return player.target;
+    return {
+      x: clamp(player.x + Math.sin(Date.now() / 1100 + player.index) * 18, FIELD.x + 46, FIELD.x + FIELD.w - 46),
+      y: goalY,
+    };
+  }
+
+  supportTarget(player, owner) {
+    const dir = player.side === 'player' ? -1 : 1;
+    const lane = player.home.x < W / 2 ? -1 : player.home.x > W / 2 ? 1 : 0;
+    const baseX = owner ? owner.x + lane * 78 : player.home.x;
+    const roleLead = player.role === 'F' ? 84 : player.role === 'M' ? 46 : -26;
+    return {
+      x: clamp(baseX, FIELD.x + 34, FIELD.x + FIELD.w - 34),
+      y: clamp((owner?.y ?? player.home.y) + dir * roleLead, FIELD.y + 42, FIELD.y + FIELD.h - 42),
+    };
+  }
+
+  pressTarget(player, target) {
+    const offset = player.home.x < W / 2 ? -18 : 18;
+    return {
+      x: clamp(target.x + offset, FIELD.x + 18, FIELD.x + FIELD.w - 18),
+      y: clamp(target.y + (player.side === 'player' ? 20 : -20), FIELD.y + 24, FIELD.y + FIELD.h - 24),
+    };
+  }
+
+  shapeTarget(player, target) {
+    const sideGoalY = player.side === 'player' ? FIELD.y + FIELD.h : FIELD.y;
+    const towardBall = clamp((target.y - player.home.y) * 0.22, -42, 42);
+    const laneNudge = clamp((target.x - W / 2) * 0.16, -22, 22);
+    const protectGoal = player.role === 'D' ? (player.side === 'player' ? -18 : 18) : 0;
+    return {
+      x: clamp(player.home.x + laneNudge, FIELD.x + 28, FIELD.x + FIELD.w - 28),
+      y: clamp(player.home.y + towardBall + protectGoal, Math.min(FIELD.y + 38, sideGoalY), FIELD.y + FIELD.h - 38),
+    };
   }
 
   resolvePossession() {

@@ -34,16 +34,16 @@ export const DEFENSE_ACTIONS = [
 
 export const PLAYER_FORMATION = [
   { role: 'GK', x: 195, y: 515 },
-  { role: 'D', x: 125, y: 452 },
-  { role: 'D', x: 265, y: 452 },
+  { role: 'D', x: 105, y: 452 },
+  { role: 'D', x: 285, y: 452 },
   { role: 'M', x: 195, y: 365 },
   { role: 'F', x: 195, y: 270 },
 ];
 
 export const CPU_FORMATION = [
   { role: 'GK', x: 195, y: 120 },
-  { role: 'D', x: 125, y: 190 },
-  { role: 'D', x: 265, y: 190 },
+  { role: 'D', x: 105, y: 190 },
+  { role: 'D', x: 285, y: 190 },
   { role: 'M', x: 195, y: 275 },
   { role: 'F', x: 195, y: 375 },
 ];
