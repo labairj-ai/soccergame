@@ -22,10 +22,14 @@ export const S = {
   GAME_OVER: 'game_over',
 };
 
-export const ACTIONS = [
-  { id: 'dribble', label: 'DRIBBLE', sub: 'carry into space', color: '#4cc9f0' },
+export const OFFENSE_ACTIONS = [
   { id: 'pass', label: 'PASS', sub: 'find a teammate', color: '#ffd166' },
   { id: 'shoot', label: 'SHOOT', sub: 'test the keeper', color: '#ef476f' },
+];
+
+export const DEFENSE_ACTIONS = [
+  { id: 'tackle', label: 'TACKLE', sub: 'close down', color: '#4cc9f0' },
+  { id: 'slide', label: 'SLIDE', sub: 'long reach', color: '#f4a261' },
 ];
 
 export const PLAYER_FORMATION = [

@@ -1,4 +1,4 @@
-import { W, H, HUD_H, CTRL_Y, ACTIONS, MATCH_SECONDS } from './constants.js';
+import { W, H, HUD_H, CTRL_Y, MATCH_SECONDS } from './constants.js';
 
 export function drawScoreboard(ctx, gs) {
   ctx.fillStyle = '#073b4c';
@@ -44,11 +44,12 @@ export function drawControls(ctx, gs) {
     return;
   }
 
-  const bw = 118;
+  const controls = gs.getControls();
+  const bw = controls.length > 3 ? 84 : controls.length > 2 ? 108 : 154;
   const bh = 62;
   const gap = 8;
-  const start = (W - bw * 3 - gap * 2) / 2;
-  ACTIONS.forEach((action, i) => {
+  const start = (W - bw * controls.length - gap * (controls.length - 1)) / 2;
+  controls.forEach((action, i) => {
     const x = start + i * (bw + gap);
     const active = gs.action === action.id;
     ctx.fillStyle = active ? action.color : '#0b4a60';
@@ -74,8 +75,10 @@ export function drawControls(ctx, gs) {
   ctx.fillStyle = 'rgba(255,255,255,0.78)';
   ctx.font = '11px monospace';
   ctx.fillText(gs.hint, W / 2, CTRL_Y + 104);
-  ctx.fillStyle = gs.power > 0.65 ? '#ef476f' : '#ffd166';
-  ctx.fillRect(60, CTRL_Y + 120, 270 * gs.power, 8);
+  ctx.fillStyle = gs.possession === 'player'
+    ? (gs.power > 0.65 ? '#ef476f' : '#ffd166')
+    : '#4cc9f0';
+  ctx.fillRect(60, CTRL_Y + 120, 270 * (gs.possession === 'player' ? gs.power : gs.defenseCharge), 8);
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.strokeRect(60, CTRL_Y + 120, 270, 8);
 }

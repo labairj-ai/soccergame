@@ -1,5 +1,5 @@
 import {
-  W, FIELD, GOAL_W, MATCH_SECONDS, HALVES, S, ACTIONS, PLAYER_FORMATION, CPU_FORMATION,
+  W, FIELD, GOAL_W, MATCH_SECONDS, HALVES, S, OFFENSE_ACTIONS, DEFENSE_ACTIONS, PLAYER_FORMATION, CPU_FORMATION,
 } from './constants.js';
 import { drawField } from './field.js';
 import { createRandomTeams, drawPlayer } from './characters.js';
@@ -128,13 +128,14 @@ export class Game {
     this.cpuTeam = this.teams.cpuTeam;
     this.state = S.MENU;
     this.ball = new Ball();
-    this.action = ACTIONS[0].id;
+    this.action = OFFENSE_ACTIONS[0].id;
     this.hint = 'Tap a button, then tap the field.';
     this.message = { title: 'PARK SOCCER', sub: 'Tap start to kick off' };
     this.score = { player: 0, cpu: 0 };
     this.half = 1;
     this.clock = MATCH_SECONDS;
     this.power = 0.4;
+    this.defenseCharge = 0.35;
     this.possession = 'player';
     this.target = { x: W / 2, y: FIELD.y + FIELD.h / 2 };
     this.resetPlayers();
@@ -150,6 +151,7 @@ export class Game {
     this.ball.x = this.controlled.x;
     this.ball.y = this.controlled.y;
     this.possession = starter;
+    this.action = starter === 'player' ? OFFENSE_ACTIONS[0].id : DEFENSE_ACTIONS[0].id;
   }
 
   pointerDown(pos) {
@@ -158,9 +160,15 @@ export class Game {
         this.startOrContinue();
         return;
       }
-      const idx = Math.floor((pos.x - 12) / 126);
-      if (idx >= 0 && idx < ACTIONS.length) {
-        this.action = ACTIONS[idx].id;
+      const controls = this.getControls();
+      const bw = controls.length > 3 ? 84 : controls.length > 2 ? 108 : 154;
+      const gap = 8;
+      const start = (W - bw * controls.length - gap * (controls.length - 1)) / 2;
+      const idx = Math.floor((pos.x - start) / (bw + gap));
+      const hit = controls[idx];
+      if (hit && pos.x >= start + idx * (bw + gap) && pos.x <= start + idx * (bw + gap) + bw) {
+        this.action = hit.id;
+        this.performInstantAction(hit.id);
       }
       return;
     }
@@ -170,6 +178,7 @@ export class Game {
       y: clamp(pos.y, FIELD.y + 12, FIELD.y + FIELD.h - 12),
     };
     if (this.possession === 'player') this.performPlayerAction(this.target);
+    else this.performDefenseAction(this.action);
   }
 
   pointerMove() {}
@@ -209,23 +218,109 @@ export class Game {
     }
   }
 
+  getControls() {
+    const owner = this.ball.owner;
+    if (owner?.side === 'player' && owner.role === 'GK') {
+      return this.players
+        .filter(p => p.side === 'player' && (p.role === 'M' || p.role === 'F'))
+        .map(p => ({
+          id: `keeper-pass-${p.role}-${p.player.name}`,
+          label: p.role === 'F' ? 'FWD' : 'MID',
+          sub: p.player.name,
+          color: '#ffd166',
+          target: p,
+        }));
+    }
+    return this.possession === 'player' ? OFFENSE_ACTIONS : DEFENSE_ACTIONS;
+  }
+
+  performInstantAction(actionId) {
+    if (actionId.startsWith('keeper-pass-')) {
+      const target = this.getControls().find(control => control.id === actionId)?.target;
+      if (target) this.passTo(target);
+      return;
+    }
+    if (this.possession !== 'player' && (actionId === 'tackle' || actionId === 'slide')) {
+      this.performDefenseAction(actionId);
+    }
+  }
+
   performPlayerAction(target) {
     const owner = this.ball.owner;
     if (!owner || owner.side !== 'player') return;
-    if (this.action === 'dribble') {
-      owner.target = target;
-      this.hint = 'Dribble into space. Switch to shoot near the box.';
+    if (owner.role === 'GK') {
+      this.hint = 'Keeper must choose MID or FWD.';
       return;
     }
     if (this.action === 'pass') {
       const mate = this.closestTeammate(target, owner);
-      this.ball.kickToward(mate, 330 + owner.player.control * 12);
-      this.controlled = mate;
-      playPass();
-      this.hint = `Pass looking for ${mate.player.name}.`;
+      this.passTo(mate);
       return;
     }
     this.shoot(owner, target, 'player');
+  }
+
+  passTo(mate) {
+    const owner = this.ball.owner;
+    if (!owner || owner.side !== 'player') return;
+    this.ball.kickToward(mate, owner.role === 'GK' ? 380 : 330 + owner.player.control * 12);
+    this.controlled = mate;
+    playPass();
+    this.hint = owner.role === 'GK'
+      ? `Keeper rolls it to ${mate.player.name}.`
+      : `Pass looking for ${mate.player.name}.`;
+  }
+
+  performDefenseAction(actionId) {
+    const carrier = this.ball.owner?.side === 'cpu' ? this.ball.owner : null;
+    const defender = this.bestDefender();
+    if (!defender) return;
+
+    defender.target = carrier ?? this.ball;
+    this.controlled = defender;
+
+    if (actionId === 'slide') {
+      this.defenseCharge = 1;
+      this.tryManualChallenge(defender, carrier, 34, 0.42, 1.3, 'Slide');
+      return;
+    }
+
+    this.defenseCharge = 0.72;
+    this.tryManualChallenge(defender, carrier, 24, 0.58, 0.65, 'Tackle');
+  }
+
+  bestDefender() {
+    const available = this.players.filter(p => p.side === 'player' && p.role !== 'GK');
+    const target = this.ball.owner?.side === 'cpu' ? this.ball.owner : this.ball;
+    return available.reduce((best, p) => dist(p, target) < dist(best, target) ? p : best, available[0]);
+  }
+
+  tryManualChallenge(defender, carrier, reach, chance, recovery, label) {
+    if (!carrier || defender.cooldown > 0) {
+      this.hint = `${label}: closing down the ball.`;
+      return;
+    }
+    const gap = dist(defender, carrier);
+    if (gap > reach) {
+      this.hint = `${label}: get closer.`;
+      return;
+    }
+
+    const odds = chance + defender.player.control * 0.025 - carrier.player.control * 0.015;
+    defender.cooldown = recovery;
+    if (Math.random() < odds) {
+      this.ball.owner = defender;
+      this.possession = 'player';
+      this.action = OFFENSE_ACTIONS[0].id;
+      this.hint = `${label} won by ${defender.player.name}.`;
+      playTackle();
+      return;
+    }
+    const shove = label === 'Slide' ? 28 : 12;
+    defender.x = clamp(defender.x + rand(-shove, shove), FIELD.x + 10, FIELD.x + FIELD.w - 10);
+    defender.y = clamp(defender.y + (label === 'Slide' ? 18 : 8), FIELD.y + 10, FIELD.y + FIELD.h - 10);
+    this.hint = `${label} missed.`;
+    playTackle();
   }
 
   closestTeammate(target, owner) {
@@ -247,6 +342,7 @@ export class Game {
     if (this.state !== S.PLAYING) return;
     this.clock -= dt;
     this.power = 0.35 + Math.abs(Math.sin(Date.now() / 700)) * 0.65;
+    this.defenseCharge = Math.max(0.28, this.defenseCharge - dt * 0.9);
     if (this.clock <= 0) {
       this.endPeriod();
       return;
@@ -295,6 +391,8 @@ export class Game {
           if (Math.random() < chance) {
             this.ball.owner = defender;
             this.possession = defender.side;
+            if (defender.side === 'player') this.action = OFFENSE_ACTIONS[0].id;
+            else this.action = DEFENSE_ACTIONS[0].id;
             defender.cooldown = 1;
             playTackle();
             this.hint = defender.side === 'player' ? 'Won it back.' : 'Tackled away.';
@@ -308,7 +406,12 @@ export class Game {
       if (dist(p, this.ball) < (p.role === 'GK' ? 24 : 17)) {
         this.ball.owner = p;
         this.possession = p.side;
-        if (p.side === 'player') this.controlled = p;
+        if (p.side === 'player') {
+          this.controlled = p;
+          this.action = OFFENSE_ACTIONS[0].id;
+        } else {
+          this.action = DEFENSE_ACTIONS[0].id;
+        }
         return;
       }
     }
@@ -329,6 +432,9 @@ export class Game {
       this.ball.y = topGoal ? FIELD.y + 22 : FIELD.y + FIELD.h - 22;
       this.ball.owner = keeper;
       this.possession = keeper.side;
+      this.action = keeper.side === 'player'
+        ? this.getControls()[0]?.id ?? OFFENSE_ACTIONS[0].id
+        : DEFENSE_ACTIONS[0].id;
       playSave();
       this.hint = inMouth ? 'Keeper saves.' : 'Just wide.';
       return;
@@ -367,7 +473,7 @@ export class Game {
   }
 
   drawTarget(ctx) {
-    if (this.state !== S.PLAYING || this.possession !== 'player') return;
+    if (this.state !== S.PLAYING || this.possession !== 'player' || this.ball.owner?.role === 'GK') return;
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
