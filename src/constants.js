@@ -11,7 +11,7 @@ export const FIELD = {
 };
 
 export const GOAL_W = 108;
-export const MATCH_SECONDS = 150;
+export const MATCH_SECONDS = 180;
 export const HALVES = 2;
 
 export const S = {

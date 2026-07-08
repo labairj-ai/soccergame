@@ -118,7 +118,8 @@ class GamePlayer {
   }
 
   get speed() {
-    return 70 + this.player.pace * 9 + (this.role === 'GK' ? 8 : 0);
+    const sideBoost = this.side === 'player' ? 1 : 0.84;
+    return (44 + this.player.pace * 5 + (this.role === 'GK' ? 5 : 0)) * sideBoost;
   }
 
   update(dt) {
@@ -283,7 +284,7 @@ export class Game {
   passTo(mate) {
     const owner = this.ball.owner;
     if (!owner || owner.side !== 'player') return;
-    this.ball.kickToward(mate, owner.role === 'GK' ? 380 : 330 + owner.player.control * 12);
+    this.ball.kickToward(mate, owner.role === 'GK' ? 245 : 220 + owner.player.control * 8);
     this.controlled = mate;
     playPass();
     this.hint = owner.role === 'GK'
@@ -301,12 +302,12 @@ export class Game {
 
     if (actionId === 'slide') {
       this.defenseCharge = 1;
-      this.tryManualChallenge(defender, carrier, 34, 0.42, 1.3, 'Slide');
+      this.tryManualChallenge(defender, carrier, 44, 0.68, 0.95, 'Slide');
       return;
     }
 
     this.defenseCharge = 0.72;
-    this.tryManualChallenge(defender, carrier, 24, 0.58, 0.65, 'Tackle');
+    this.tryManualChallenge(defender, carrier, 32, 0.78, 0.45, 'Tackle');
   }
 
   bestDefender() {
@@ -326,7 +327,7 @@ export class Game {
       return;
     }
 
-    const odds = chance + defender.player.control * 0.025 - carrier.player.control * 0.015;
+    const odds = clamp(chance + defender.player.control * 0.025 - carrier.player.control * 0.01, 0.42, 0.92);
     defender.cooldown = recovery;
     if (Math.random() < odds) {
       this.ball.owner = defender;
@@ -336,7 +337,7 @@ export class Game {
       playTackle();
       return;
     }
-    const shove = label === 'Slide' ? 28 : 12;
+    const shove = label === 'Slide' ? 16 : 8;
     defender.x = clamp(defender.x + rand(-shove, shove), FIELD.x + 10, FIELD.x + FIELD.w - 10);
     defender.y = clamp(defender.y + (label === 'Slide' ? 18 : 8), FIELD.y + 10, FIELD.y + FIELD.h - 10);
     this.hint = `${label} missed.`;
@@ -351,10 +352,11 @@ export class Game {
   shoot(owner, target, side) {
     const goalY = side === 'player' ? FIELD.y - 8 : FIELD.y + FIELD.h + 8;
     const goalX = clamp(target.x, W / 2 - GOAL_W / 2 + 8, W / 2 + GOAL_W / 2 - 8);
-    const kick = owner.player.kick + rand(-2, 2);
-    const accuracy = (owner.player.control + kick) / 20;
-    const miss = (1 - accuracy) * rand(-90, 90);
-    this.ball.kickToward({ x: goalX + miss, y: goalY }, 440 + kick * 18);
+    const kidFriendly = side === 'player';
+    const kick = owner.player.kick + rand(kidFriendly ? -0.5 : -3, kidFriendly ? 2.5 : 1);
+    const accuracy = clamp((owner.player.control + kick) / (kidFriendly ? 17 : 24), 0.35, 0.96);
+    const miss = (1 - accuracy) * rand(kidFriendly ? -48 : -120, kidFriendly ? 48 : 120);
+    this.ball.kickToward({ x: goalX + miss, y: goalY }, kidFriendly ? 315 + kick * 10 : 255 + kick * 8);
     this.hint = side === 'player' ? 'Shot away!' : 'They shoot!';
   }
 
@@ -383,19 +385,20 @@ export class Game {
         p.target = { x: clamp(this.ball.x, 140, 250), y: p.side === 'player' ? FIELD.y + FIELD.h - 36 : FIELD.y + 36 };
       } else if (p.side === attacking) {
         const dir = p.side === 'player' ? -1 : 1;
-        p.target = { x: p.home.x + Math.sin(Date.now() / 700 + p.x) * 24, y: p.home.y + dir * 38 };
+        const supportDistance = p.side === 'player' ? 32 : 22;
+        p.target = { x: p.home.x + Math.sin(Date.now() / 900 + p.x) * 16, y: p.home.y + dir * supportDistance };
       } else {
-        p.target = { x: this.ball.x + rand(-28, 28), y: this.ball.y + rand(-22, 22) };
+        p.target = { x: this.ball.x + rand(-24, 24), y: this.ball.y + rand(-18, 18) };
       }
     }
 
     if (owner?.side === 'cpu') {
-      owner.target = { x: this.ball.x + rand(-18, 18), y: FIELD.y + FIELD.h - 34 };
+      owner.target = { x: this.ball.x + rand(-14, 14), y: FIELD.y + FIELD.h - 72 };
       const goalDistance = FIELD.y + FIELD.h - owner.y;
-      if (goalDistance < 145 && Math.random() < dt * 1.1) this.shoot(owner, { x: W / 2 + rand(-34, 34), y: FIELD.y + FIELD.h + 10 }, 'cpu');
-      else if (Math.random() < dt * 0.45) {
+      if (goalDistance < 105 && Math.random() < dt * 0.22) this.shoot(owner, { x: W / 2 + rand(-54, 54), y: FIELD.y + FIELD.h + 10 }, 'cpu');
+      else if (Math.random() < dt * 0.25) {
         const mate = this.closestTeammate({ x: W / 2 + rand(-90, 90), y: owner.y + rand(25, 80) }, owner);
-        this.ball.kickToward(mate, 300);
+        this.ball.kickToward(mate, 190);
         playPass();
       }
     }
@@ -407,7 +410,9 @@ export class Game {
       for (const defender of this.players.filter(p => p.side !== this.possession && p.cooldown <= 0)) {
         const carrier = this.ball.owner;
         if (dist(defender, carrier) < 22) {
-          const chance = 0.18 + defender.player.control * 0.035 - carrier.player.control * 0.02;
+          const chance = defender.side === 'player'
+            ? 0.28 + defender.player.control * 0.035 - carrier.player.control * 0.012
+            : 0.07 + defender.player.control * 0.018 - carrier.player.control * 0.025;
           if (Math.random() < chance) {
             this.ball.owner = defender;
             this.possession = defender.side;
@@ -445,10 +450,11 @@ export class Game {
     const inMouth = this.ball.x > W / 2 - GOAL_W / 2 && this.ball.x < W / 2 + GOAL_W / 2;
     const scoringSide = topGoal ? 'player' : 'cpu';
     const keeper = this.players.find(p => p.side !== scoringSide && p.role === 'GK');
-    const saveChance = keeper ? clamp(0.62 - Math.abs(this.ball.x - keeper.x) / 130, 0.18, 0.72) : 0.2;
+    const baseSave = keeper?.side === 'cpu' ? 0.32 : 0.78;
+    const saveChance = keeper ? clamp(baseSave - Math.abs(this.ball.x - keeper.x) / 150, keeper.side === 'cpu' ? 0.08 : 0.38, keeper.side === 'cpu' ? 0.42 : 0.86) : 0.2;
     if (!inMouth || Math.random() < saveChance) {
       this.ball.vx = 0;
-      this.ball.vy = topGoal ? 220 : -220;
+      this.ball.vy = topGoal ? 145 : -145;
       this.ball.y = topGoal ? FIELD.y + 22 : FIELD.y + FIELD.h - 22;
       this.ball.owner = keeper;
       this.possession = keeper.side;
@@ -479,7 +485,7 @@ export class Game {
     }
     this.state = S.GAME_OVER;
     stopMusic();
-    const result = this.score.player > this.score.cpu ? 'YOU WIN' : this.score.player < this.score.cpu ? 'FULL TIME' : 'DRAW';
+    const result = this.score.player >= this.score.cpu ? 'YOU WIN' : 'FULL TIME';
     this.message = { title: result, sub: `${this.score.player} - ${this.score.cpu}` };
   }
 
