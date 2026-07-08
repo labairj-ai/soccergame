@@ -23,7 +23,8 @@ export function drawScoreboard(ctx, gs) {
   ctx.fillText(`HALF ${gs.half}`, W / 2, 61);
 
   const elapsed = MATCH_SECONDS - Math.ceil(gs.clock);
-  const minute = Math.min(90, Math.floor((elapsed / MATCH_SECONDS) * 90));
+  const halfOffset = (gs.half - 1) * 45;
+  const minute = halfOffset + Math.min(45, Math.floor((elapsed / MATCH_SECONDS) * 45));
   ctx.textAlign = 'right';
   ctx.fillStyle = '#fff4d6';
   ctx.font = 'bold 17px monospace';

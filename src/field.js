@@ -39,10 +39,6 @@ function drawPenaltyArea(ctx, top) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x, y, boxW, boxH);
   ctx.strokeRect(FIELD.x + (FIELD.w - 78) / 2, top ? FIELD.y : FIELD.y + FIELD.h - 28, 78, 28);
-  ctx.beginPath();
-  ctx.arc(FIELD.x + FIELD.w / 2, top ? FIELD.y + 55 : FIELD.y + FIELD.h - 55, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
 }
 
 function drawGoal(ctx, top) {
