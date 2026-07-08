@@ -44,6 +44,8 @@ class Ball {
     this.vy = 0;
     this.owner = null;
     this.trail = [];
+    this.lastKicker = null;
+    this.kickerCooldown = 0;
   }
 
   update(dt) {
@@ -54,6 +56,7 @@ class Ball {
       this.vy = 0;
       return;
     }
+    this.kickerCooldown = Math.max(0, this.kickerCooldown - dt);
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > 12) this.trail.shift();
     this.x += this.vx * dt;
@@ -67,11 +70,13 @@ class Ball {
     this.x = clamp(this.x, FIELD.x + 6, FIELD.x + FIELD.w - 6);
   }
 
-  kickToward(target, speed) {
+  kickToward(target, speed, kicker = null) {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const d = Math.max(1, Math.hypot(dx, dy));
     this.owner = null;
+    this.lastKicker = kicker;
+    this.kickerCooldown = kicker ? 0.5 : 0;
     this.vx = (dx / d) * speed;
     this.vy = (dy / d) * speed;
     playKick();
@@ -277,7 +282,7 @@ export class Game {
   passTo(mate) {
     const owner = this.ball.owner;
     if (!owner || owner.side !== 'player') return;
-    this.ball.kickToward(mate, owner.role === 'GK' ? 245 : 220 + owner.player.control * 8);
+    this.ball.kickToward(mate, owner.role === 'GK' ? 245 : 220 + owner.player.control * 8, owner);
     this.controlled = mate;
     this.target = null;
     playPass();
@@ -425,7 +430,7 @@ export class Game {
       if (goalDistance < 105 && Math.random() < dt * 0.22) this.shoot(owner, { x: W / 2 + rand(-54, 54), y: FIELD.y + FIELD.h + 10 }, 'cpu');
       else if (Math.random() < dt * 0.25) {
         const mate = this.mostOpenTeammate(owner);
-        this.ball.kickToward(mate, 190);
+        this.ball.kickToward(mate, 190, owner);
         playPass();
       }
     }
@@ -537,6 +542,7 @@ export class Game {
     }
     for (const p of this.players) {
       if (dist(p, this.ball) < (p.role === 'GK' ? 24 : 17)) {
+        if (p === this.ball.lastKicker && this.ball.kickerCooldown > 0) continue;
         this.ball.owner = p;
         this.possession = p.side;
         if (p.side === 'player') {
