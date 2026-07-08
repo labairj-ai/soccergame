@@ -398,7 +398,11 @@ export class Game {
     const owner = this.ball.owner;
     const attacking = owner?.side ?? this.possession;
     const defending = attacking === 'player' ? 'cpu' : 'player';
-    const pressers = this.getPressers(defending, owner ?? this.ball, owner ? 1 : 2);
+    // When the keeper has the ball, defending team retreats — no pressing
+    const keeperHasBall = owner?.role === 'GK';
+    const pressers = keeperHasBall
+      ? []
+      : this.getPressers(defending, owner ?? this.ball, owner ? 1 : 2);
     for (const p of this.players) {
       if (p.role === 'GK') {
         p.target = { x: clamp(this.ball.x, 140, 250), y: p.side === 'player' ? FIELD.y + FIELD.h - 36 : FIELD.y + 36 };
@@ -408,8 +412,10 @@ export class Game {
         p.target = this.supportTarget(p, owner);
       } else if (pressers.includes(p)) {
         p.target = this.pressTarget(p, owner ?? this.ball);
+      } else if (keeperHasBall && p.side === defending) {
+        p.target = this.retreatTarget(p);
       } else {
-        p.target = this.shapeTarget(p, owner ?? this.ball);
+        p.target = this.zoneTarget(p, owner ?? this.ball);
       }
     }
 
@@ -475,15 +481,32 @@ export class Game {
     };
   }
 
-  shapeTarget(player, target) {
+  // Zone defense: each player tracks the ball only within their horizontal zone
+  zoneTarget(player, target) {
     const sideGoalY = player.side === 'player' ? FIELD.y + FIELD.h : FIELD.y;
     const flowShift = (player.side === 'player' ? -this.flow : this.flow) * 48;
-    const towardBall = clamp((target.y - player.home.y) * 0.18, -34, 34);
-    const laneNudge = clamp((target.x - W / 2) * 0.16, -22, 22);
-    const protectGoal = player.role === 'D' ? (player.side === 'player' ? -18 : 18) : 0;
+    // Clamp the ball's x to this player's zone radius before computing x offset
+    const zoneRadius = FIELD.w * 0.24;
+    const ballInZone = clamp(target.x, player.home.x - zoneRadius, player.home.x + zoneRadius);
+    const xTracking = (ballInZone - player.home.x) * 0.45;
+    const towardBall = clamp((target.y - player.home.y) * 0.25, -46, 46);
+    const protectGoal = player.role === 'D' ? (player.side === 'player' ? -22 : 22) : 0;
     return {
-      x: clamp(player.home.x + laneNudge, FIELD.x + 28, FIELD.x + FIELD.w - 28),
-      y: clamp(player.home.y + towardBall + protectGoal + flowShift, Math.min(FIELD.y + 38, sideGoalY), FIELD.y + FIELD.h - 38),
+      x: clamp(player.home.x + xTracking, FIELD.x + 28, FIELD.x + FIELD.w - 28),
+      y: clamp(player.home.y + towardBall + protectGoal + flowShift, FIELD.y + 38, FIELD.y + FIELD.h - 38),
+    };
+  }
+
+  // When the keeper has the ball, drop into a compact mid-block
+  retreatTarget(player) {
+    const ownGoalY = player.side === 'player' ? FIELD.y + FIELD.h : FIELD.y;
+    const midY = FIELD.y + FIELD.h / 2;
+    // Defenders drop deeper into own half; midfielders sit just behind midfield
+    const blockDepth = player.role === 'D' ? 0.45 : 0.2;
+    const blockY = midY + (ownGoalY - midY) * blockDepth;
+    return {
+      x: clamp(player.home.x, FIELD.x + 28, FIELD.x + FIELD.w - 28),
+      y: clamp(blockY, FIELD.y + 38, FIELD.y + FIELD.h - 38),
     };
   }
 
