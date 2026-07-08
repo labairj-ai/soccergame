@@ -1,5 +1,5 @@
 import {
-  W, FIELD, GOAL_W, MATCH_SECONDS, HALVES, S, OFFENSE_ACTIONS, DEFENSE_ACTIONS, PLAYER_FORMATION, CPU_FORMATION,
+  W, FIELD, GOAL_W, MATCH_SECONDS, HALVES, S, OFFENSE_ACTIONS, DEFENSE_ACTIONS, PLAYER_FORMATION, CPU_FORMATION, CTRL_Y,
 } from './constants.js';
 import { drawField } from './field.js';
 import { createRandomTeams, drawPlayer } from './characters.js';
@@ -148,7 +148,7 @@ export class Game {
     this.buildLabel = buildLabel();
     this.ball = new Ball();
     this.action = OFFENSE_ACTIONS[0].id;
-    this.hint = 'Tap a button, then tap the field.';
+    this.hint = 'Tap PASS or SHOOT!';
     this.message = { title: 'PARK SOCCER', sub: 'Tap start to kick off' };
     this.score = { player: 0, cpu: 0 };
     this.half = 1;
@@ -157,7 +157,7 @@ export class Game {
     this.defenseCharge = 0.35;
     this.flow = 0;
     this.possession = 'player';
-    this.target = { x: W / 2, y: FIELD.y + FIELD.h / 2 };
+    this.target = null;
     this.resetPlayers();
   }
 
@@ -172,18 +172,20 @@ export class Game {
     this.ball.y = this.controlled.y;
     this.possession = starter;
     this.action = starter === 'player' ? OFFENSE_ACTIONS[0].id : DEFENSE_ACTIONS[0].id;
+    this.target = null;
+    this.hint = starter === 'player' ? 'Tap PASS or SHOOT!' : 'Tap TACKLE or SLIDE!';
   }
 
   pointerDown(pos) {
     if (this.state !== S.GAME_OVER) startMusic();
-    if (pos.y >= 560) {
+    if (pos.y >= CTRL_Y) {
       if (this.state !== S.PLAYING) {
         this.startOrContinue();
         return;
       }
       const controls = this.getControls();
-      const bw = controls.length > 3 ? 84 : controls.length > 2 ? 108 : 154;
-      const gap = 8;
+      const bw = controls.length === 1 ? 250 : 170;
+      const gap = 10;
       const start = (W - bw * controls.length - gap * (controls.length - 1)) / 2;
       const idx = Math.floor((pos.x - start) / (bw + gap));
       const hit = controls[idx];
@@ -194,12 +196,16 @@ export class Game {
       return;
     }
     if (this.state !== S.PLAYING) return;
-    this.target = {
+    // Field tap: steer the ball carrier toward the tapped spot
+    const tapped = {
       x: clamp(pos.x, FIELD.x + 12, FIELD.x + FIELD.w - 12),
       y: clamp(pos.y, FIELD.y + 12, FIELD.y + FIELD.h - 12),
     };
-    if (this.possession === 'player') this.performPlayerAction(this.target);
-    else this.performDefenseAction(this.action);
+    this.target = tapped;
+    const carrier = this.ball.owner;
+    if (carrier?.side === 'player' && carrier.role !== 'GK') {
+      carrier.target = tapped;
+    }
   }
 
   pointerMove() {}
@@ -244,43 +250,28 @@ export class Game {
   getControls() {
     const owner = this.ball.owner;
     if (owner?.side === 'player' && owner.role === 'GK') {
-      return this.players
-        .filter(p => p.side === 'player' && (p.role === 'M' || p.role === 'F'))
-        .map(p => ({
-          id: `keeper-pass-${p.role}-${p.player.name}`,
-          label: p.role === 'F' ? 'FWD' : 'MID',
-          sub: p.player.name,
-          color: '#ffd166',
-          target: p,
-        }));
+      return [{ id: 'keeper-kick', label: 'KICK OUT', sub: 'clear the ball!', color: '#ffd166' }];
     }
     return this.possession === 'player' ? OFFENSE_ACTIONS : DEFENSE_ACTIONS;
   }
 
   performInstantAction(actionId) {
-    if (actionId.startsWith('keeper-pass-')) {
-      const target = this.getControls().find(control => control.id === actionId)?.target;
-      if (target) this.passTo(target);
-      return;
-    }
-    if (this.possession !== 'player' && (actionId === 'tackle' || actionId === 'slide')) {
-      this.performDefenseAction(actionId);
-    }
-  }
-
-  performPlayerAction(target) {
-    const owner = this.ball.owner;
-    if (!owner || owner.side !== 'player') return;
-    if (owner.role === 'GK') {
-      this.hint = 'Keeper must choose MID or FWD.';
-      return;
-    }
-    if (this.action === 'pass') {
+    if (actionId === 'keeper-kick' || actionId === 'pass') {
+      const owner = this.ball.owner;
+      if (!owner || owner.side !== 'player') return;
       const mate = this.mostOpenTeammate(owner);
-      this.passTo(mate);
+      if (mate) this.passTo(mate);
       return;
     }
-    this.shoot(owner, target, 'player');
+    if (actionId === 'shoot') {
+      const owner = this.ball.owner;
+      if (!owner || owner.side !== 'player' || owner.role === 'GK') return;
+      this.shoot(owner, { x: W / 2, y: FIELD.y - 8 }, 'player');
+      return;
+    }
+    if (actionId === 'tackle' || actionId === 'slide') {
+      if (this.possession !== 'player') this.performDefenseAction(actionId);
+    }
   }
 
   passTo(mate) {
@@ -288,10 +279,9 @@ export class Game {
     if (!owner || owner.side !== 'player') return;
     this.ball.kickToward(mate, owner.role === 'GK' ? 245 : 220 + owner.player.control * 8);
     this.controlled = mate;
+    this.target = null;
     playPass();
-    this.hint = owner.role === 'GK'
-      ? `Keeper rolls it to ${mate.player.name}.`
-      : `Pass looking for ${mate.player.name}.`;
+    this.hint = `${mate.player.name} gets it!`;
   }
 
   performDefenseAction(actionId) {
@@ -320,12 +310,12 @@ export class Game {
 
   tryManualChallenge(defender, carrier, reach, chance, recovery, label) {
     if (!carrier || defender.cooldown > 0) {
-      this.hint = `${label}: closing down the ball.`;
+      this.hint = 'Running to get it...';
       return;
     }
     const gap = dist(defender, carrier);
     if (gap > reach) {
-      this.hint = `${label}: get closer.`;
+      this.hint = 'Get closer! Tap again!';
       return;
     }
 
@@ -335,14 +325,14 @@ export class Game {
       this.ball.owner = defender;
       this.possession = 'player';
       this.action = OFFENSE_ACTIONS[0].id;
-      this.hint = `${label} won by ${defender.player.name}.`;
+      this.hint = `${defender.player.name} got the ball!`;
       playTackle();
       return;
     }
     const shove = label === 'Slide' ? 16 : 8;
     defender.x = clamp(defender.x + rand(-shove, shove), FIELD.x + 10, FIELD.x + FIELD.w - 10);
     defender.y = clamp(defender.y + (label === 'Slide' ? 18 : 8), FIELD.y + 10, FIELD.y + FIELD.h - 10);
-    this.hint = `${label} missed.`;
+    this.hint = 'Missed! Tap TACKLE again!';
     playTackle();
   }
 
@@ -382,7 +372,8 @@ export class Game {
     const accuracy = clamp((owner.player.control + kick) / (kidFriendly ? 17 : 24), 0.35, 0.96);
     const miss = (1 - accuracy) * rand(kidFriendly ? -48 : -120, kidFriendly ? 48 : 120);
     this.ball.kickToward({ x: goalX + miss, y: goalY }, kidFriendly ? 315 + kick * 10 : 255 + kick * 8);
-    this.hint = side === 'player' ? 'Shot away!' : 'They shoot!';
+    if (side === 'player') this.target = null;
+    this.hint = side === 'player' ? 'Go in! Go in!' : 'They shoot!';
   }
 
   update(dt) {
@@ -512,7 +503,7 @@ export class Game {
             else this.action = DEFENSE_ACTIONS[0].id;
             defender.cooldown = 1;
             playTackle();
-            this.hint = defender.side === 'player' ? 'Won it back.' : 'Tackled away.';
+            this.hint = defender.side === 'player' ? 'Got the ball! Tap PASS or SHOOT!' : 'They took it! Tap TACKLE!';
             return;
           }
         }
@@ -526,8 +517,10 @@ export class Game {
         if (p.side === 'player') {
           this.controlled = p;
           this.action = OFFENSE_ACTIONS[0].id;
+          this.hint = p.role === 'GK' ? 'Tap KICK OUT!' : 'Tap PASS or SHOOT!';
         } else {
           this.action = DEFENSE_ACTIONS[0].id;
+          this.hint = 'Tap TACKLE or SLIDE!';
         }
         return;
       }
@@ -554,7 +547,7 @@ export class Game {
         ? this.getControls()[0]?.id ?? OFFENSE_ACTIONS[0].id
         : DEFENSE_ACTIONS[0].id;
       playSave();
-      this.hint = inMouth ? 'Keeper saves.' : 'Just wide.';
+      this.hint = inMouth ? 'Great save!' : 'Just missed!';
       return;
     }
 
@@ -592,7 +585,7 @@ export class Game {
   }
 
   drawTarget(ctx) {
-    if (this.state !== S.PLAYING || this.possession !== 'player' || this.ball.owner?.role === 'GK') return;
+    if (this.state !== S.PLAYING || !this.target || this.possession !== 'player' || this.ball.owner?.role === 'GK') return;
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);

@@ -48,42 +48,42 @@ export function drawControls(ctx, gs) {
   }
 
   const controls = gs.getControls();
-  const bw = controls.length > 3 ? 84 : controls.length > 2 ? 108 : 154;
-  const bh = 62;
-  const gap = 8;
+  const bw = controls.length === 1 ? 250 : 170;
+  const bh = 74;
+  const gap = 10;
   const start = (W - bw * controls.length - gap * (controls.length - 1)) / 2;
   controls.forEach((action, i) => {
     const x = start + i * (bw + gap);
     const active = gs.action === action.id;
     ctx.fillStyle = active ? action.color : '#0b4a60';
     ctx.beginPath();
-    ctx.roundRect(x, CTRL_Y + 18, bw, bh, 12);
+    ctx.roundRect(x, CTRL_Y + 10, bw, bh, 14);
     ctx.fill();
     ctx.strokeStyle = active ? '#fff' : action.color;
-    ctx.lineWidth = active ? 2.5 : 1.5;
+    ctx.lineWidth = active ? 3 : 1.5;
     ctx.beginPath();
-    ctx.roundRect(x, CTRL_Y + 18, bw, bh, 12);
+    ctx.roundRect(x, CTRL_Y + 10, bw, bh, 14);
     ctx.stroke();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = active ? '#073b4c' : action.color;
-    ctx.font = 'bold 16px monospace';
-    ctx.fillText(action.label, x + bw / 2, CTRL_Y + 45);
-    ctx.fillStyle = active ? 'rgba(7,59,76,0.72)' : 'rgba(255,255,255,0.55)';
-    ctx.font = '9px monospace';
-    ctx.fillText(action.sub, x + bw / 2, CTRL_Y + 64);
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText(action.label, x + bw / 2, CTRL_Y + 44);
+    ctx.fillStyle = active ? 'rgba(7,59,76,0.8)' : 'rgba(255,255,255,0.6)';
+    ctx.font = '11px monospace';
+    ctx.fillText(action.sub, x + bw / 2, CTRL_Y + 68);
   });
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.78)';
-  ctx.font = '11px monospace';
-  ctx.fillText(gs.hint, W / 2, CTRL_Y + 104);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText(gs.hint, W / 2, CTRL_Y + 108);
   ctx.fillStyle = gs.possession === 'player'
     ? (gs.power > 0.65 ? '#ef476f' : '#ffd166')
     : '#4cc9f0';
-  ctx.fillRect(60, CTRL_Y + 120, 270 * (gs.possession === 'player' ? gs.power : gs.defenseCharge), 8);
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.strokeRect(60, CTRL_Y + 120, 270, 8);
+  ctx.fillRect(60, CTRL_Y + 124, 270 * (gs.possession === 'player' ? gs.power : gs.defenseCharge), 6);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.strokeRect(60, CTRL_Y + 124, 270, 6);
 }
 
 export function drawMessage(ctx, gs) {
@@ -108,20 +108,20 @@ export function drawMessage(ctx, gs) {
 }
 
 function drawBigButton(ctx, label, color) {
-  const x = 58;
-  const y = CTRL_Y + 28;
-  const w = W - 116;
-  const h = 82;
+  const x = 36;
+  const y = CTRL_Y + 14;
+  const w = W - 72;
+  const h = 92;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 16);
+  ctx.roundRect(x, y, w, h, 18);
   ctx.fill();
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3;
   ctx.stroke();
   ctx.fillStyle = '#073b4c';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 25px monospace';
+  ctx.font = 'bold 28px monospace';
   ctx.fillText(label, W / 2, y + h / 2);
 }
