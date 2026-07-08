@@ -515,6 +515,8 @@ export class Game {
       this.possession = this.ball.owner.side;
       for (const defender of this.players.filter(p => p.side !== this.possession && p.cooldown <= 0)) {
         const carrier = this.ball.owner;
+        // Goalkeepers are protected from auto-tackles — use manual TACKLE button
+        if (carrier.role === 'GK') continue;
         if (dist(defender, carrier) < 22) {
           const chance = defender.side === 'player'
             ? 0.28 + defender.player.control * 0.035 - carrier.player.control * 0.012
@@ -539,7 +541,7 @@ export class Game {
         this.possession = p.side;
         if (p.side === 'player') {
           this.controlled = p;
-          this.action = OFFENSE_ACTIONS[0].id;
+          this.action = p.role === 'GK' ? 'keeper-kick' : OFFENSE_ACTIONS[0].id;
           this.hint = p.role === 'GK' ? 'Tap KICK OUT!' : 'Tap PASS or SHOOT!';
         } else {
           this.action = DEFENSE_ACTIONS[0].id;
@@ -566,11 +568,14 @@ export class Game {
       this.ball.y = topGoal ? FIELD.y + 22 : FIELD.y + FIELD.h - 22;
       this.ball.owner = keeper;
       this.possession = keeper.side;
-      this.action = keeper.side === 'player'
-        ? this.getControls()[0]?.id ?? OFFENSE_ACTIONS[0].id
-        : DEFENSE_ACTIONS[0].id;
-      playSave();
-      this.hint = inMouth ? 'Great save!' : 'Just missed!';
+      if (keeper.side === 'player') {
+        this.controlled = keeper;
+        this.action = 'keeper-kick';
+        this.hint = 'Great save! Tap KICK OUT!';
+      } else {
+        this.action = DEFENSE_ACTIONS[0].id;
+        this.hint = inMouth ? 'Great save!' : 'Just missed!';
+      }
       return;
     }
 
